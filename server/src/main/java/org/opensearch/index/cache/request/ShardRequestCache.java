@@ -36,15 +36,20 @@ import org.apache.lucene.util.Accountable;
 import org.opensearch.common.bytes.BytesReference;
 import org.opensearch.common.metrics.CounterMetric;
 
+import java.io.Serializable;
+
 /**
  * Tracks the portion of the request cache in use for a particular shard.
  */
-public final class ShardRequestCache {
+public final class ShardRequestCache implements Serializable {
 
     final CounterMetric evictionsMetric = new CounterMetric();
     final CounterMetric totalMetric = new CounterMetric();
     final CounterMetric hitCount = new CounterMetric();
     final CounterMetric missCount = new CounterMetric();
+
+    public ShardRequestCache() {
+    }
 
     public RequestCacheStats stats() {
         return new RequestCacheStats(totalMetric.count(), evictionsMetric.count(), hitCount.count(), missCount.count());

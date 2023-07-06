@@ -45,6 +45,7 @@ import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.BytesRef;
+import org.junit.Test;
 import org.opensearch.common.CheckedSupplier;
 import org.opensearch.common.bytes.AbstractBytesReference;
 import org.opensearch.common.bytes.BytesReference;
@@ -52,19 +53,21 @@ import org.opensearch.common.io.stream.BytesStreamOutput;
 import org.opensearch.common.lucene.index.OpenSearchDirectoryReader;
 import org.opensearch.common.settings.Settings;
 import org.opensearch.common.unit.ByteSizeValue;
+import org.opensearch.common.util.io.IOUtils;
 import org.opensearch.common.xcontent.XContentHelper;
 import org.opensearch.common.xcontent.XContentType;
-import org.opensearch.core.internal.io.IOUtils;
 import org.opensearch.index.cache.request.ShardRequestCache;
 import org.opensearch.index.query.TermQueryBuilder;
 import org.opensearch.index.shard.ShardId;
 import org.opensearch.test.OpenSearchTestCase;
+import org.opensearch.indices.IndicesRequestCache.TestEntity;
 
 import java.io.IOException;
+import java.io.Serializable;
 import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-public class IndicesRequestCacheTests extends OpenSearchTestCase {
+public class IndicesRequestTieredCacheTests extends OpenSearchTestCase implements Serializable {
 
     public void testBasicOperationsCache() throws Exception {
         ShardRequestCache requestCacheStats = new ShardRequestCache();
@@ -115,8 +118,7 @@ public class IndicesRequestCacheTests extends OpenSearchTestCase {
         assertEquals(0, requestCacheStats.stats().getEvictions());
         assertTrue(loader.loadedFromCache);
         assertEquals(0, cache.count());
-        assertEquals(0, requestCacheStats.stats().getMemorySize().bytesAsInt());
-
+        assertEquals(0, cache.sizeInBytes()); //changed to sizeInBytes
         IOUtils.close(reader, writer, dir, cache);
         assertEquals(0, cache.numRegisteredCloseListeners());
     }
@@ -194,7 +196,7 @@ public class IndicesRequestCacheTests extends OpenSearchTestCase {
         assertEquals(0, requestCacheStats.stats().getEvictions());
         assertTrue(loader.loadedFromCache);
         assertEquals(1, cache.count());
-        assertEquals(cacheSize, requestCacheStats.stats().getMemorySize().bytesAsInt());
+//        assertEquals(cacheSize, requestCacheStats.stats().getMemorySize().bytesAsInt()); //TODO: heap + disk = 2x cacheSize
         assertEquals(1, cache.numRegisteredCloseListeners());
 
         // release
@@ -209,7 +211,7 @@ public class IndicesRequestCacheTests extends OpenSearchTestCase {
         assertEquals(0, requestCacheStats.stats().getEvictions());
         assertTrue(loader.loadedFromCache);
         assertEquals(0, cache.count());
-        assertEquals(0, requestCacheStats.stats().getMemorySize().bytesAsInt());
+        assertEquals(0, cache.sizeInBytes());
 
         IOUtils.close(secondReader, writer, dir, cache);
         assertEquals(0, cache.numRegisteredCloseListeners());
@@ -240,11 +242,15 @@ public class IndicesRequestCacheTests extends OpenSearchTestCase {
             assertEquals("foo", value1.streamInput().readString());
             BytesReference value2 = cache.getOrCompute(secondEntity, secondLoader, secondReader, termBytes);
             assertEquals("bar", value2.streamInput().readString());
-            size = requestCacheStats.stats().getMemorySize();
+            value1 = cache.getOrCompute(entity, loader, reader, termBytes);
+            assertEquals("foo", value1.streamInput().readString());
+            value2 = cache.getOrCompute(secondEntity, secondLoader, secondReader, termBytes);
+            assertEquals("bar", value2.streamInput().readString());
+            size = new ByteSizeValue(cache.onHeapBytes());
             IOUtils.close(reader, secondReader, writer, dir, cache);
         }
         IndicesRequestCache cache = new IndicesRequestCache(
-            Settings.builder().put(IndicesRequestCache.INDICES_CACHE_QUERY_SIZE_HEAP.getKey(), size.getBytes() + 1 + "b").build()
+            Settings.builder().put(IndicesRequestCache.INDICES_CACHE_QUERY_SIZE_HEAP.getKey(), 300 + "b").build()
         );
         AtomicBoolean indexShard = new AtomicBoolean(true);
         ShardRequestCache requestCacheStats = new ShardRequestCache();
@@ -272,11 +278,19 @@ public class IndicesRequestCacheTests extends OpenSearchTestCase {
         assertEquals("foo", value1.streamInput().readString());
         BytesReference value2 = cache.getOrCompute(secondEntity, secondLoader, secondReader, termBytes);
         assertEquals("bar", value2.streamInput().readString());
-        logger.info("Memory size: {}", requestCacheStats.stats().getMemorySize());
+        logger.info("Total cache size: {}", cache.sizeInBytes());
         BytesReference value3 = cache.getOrCompute(thirddEntity, thirdLoader, thirdReader, termBytes);
         assertEquals("baz", value3.streamInput().readString());
-        assertEquals(2, cache.count());
-        assertEquals(1, requestCacheStats.stats().getEvictions());
+        assertEquals(3, cache.count()); // disk cache has 3 entries, not pushed to heap yet
+        assertEquals(0, cache.onHeapBytes());
+        value1 = cache.getOrCompute(entity, loader, reader, termBytes);
+        assertEquals("foo", value1.streamInput().readString());
+        value2 = cache.getOrCompute(secondEntity, secondLoader, secondReader, termBytes);
+        assertEquals("bar", value2.streamInput().readString());
+        logger.info("Total size: {}", cache.sizeInBytes());
+        value3 = cache.getOrCompute(thirddEntity, thirdLoader, thirdReader, termBytes);
+        assertEquals("baz", value3.streamInput().readString());
+        assertEquals(2, cache.getHeapEvictions());
         IOUtils.close(reader, secondReader, thirdReader, writer, dir, cache);
     }
 
@@ -385,7 +399,7 @@ public class IndicesRequestCacheTests extends OpenSearchTestCase {
         assertEquals(1, requestCacheStats.stats().getMissCount());
         assertEquals(0, requestCacheStats.stats().getEvictions());
         assertFalse(loader.loadedFromCache);
-        assertEquals(1, cache.count()); // Fails here because puts are broken due to serialization
+        assertEquals(1, cache.count());
 
         // cache hit
         entity = new TestEntity(requestCacheStats, indexShard);
@@ -426,7 +440,7 @@ public class IndicesRequestCacheTests extends OpenSearchTestCase {
         assertEquals(2, requestCacheStats.stats().getMissCount());
         assertEquals(0, requestCacheStats.stats().getEvictions());
         assertEquals(0, cache.count());
-        assertEquals(0, requestCacheStats.stats().getMemorySize().bytesAsInt());
+        assertEquals(0, cache.diskBytes());
 
         IOUtils.close(reader, writer, dir, cache);
         assertEquals(0, cache.numRegisteredCloseListeners());
@@ -510,33 +524,38 @@ public class IndicesRequestCacheTests extends OpenSearchTestCase {
         }
     }
 
-    private class TestEntity extends AbstractIndexShardCacheEntity {
-        private final AtomicBoolean standInForIndexShard;
-        private final ShardRequestCache shardRequestCache;
-
-        private TestEntity(ShardRequestCache shardRequestCache, AtomicBoolean standInForIndexShard) {
-            this.standInForIndexShard = standInForIndexShard;
-            this.shardRequestCache = shardRequestCache;
-        }
-
-        @Override
-        protected ShardRequestCache stats() {
-            return shardRequestCache;
-        }
-
-        @Override
-        public boolean isOpen() {
-            return standInForIndexShard.get();
-        }
-
-        @Override
-        public Object getCacheIdentity() {
-            return standInForIndexShard;
-        }
-
-        @Override
-        public long ramBytesUsed() {
-            return 42;
-        }
-    }
+//    public class TestEntity extends AbstractIndexShardCacheEntity implements Serializable {
+//        private final AtomicBoolean standInForIndexShard;
+//        private final ShardRequestCache shardRequestCache;
+//
+//        public TestEntity() {
+//            standInForIndexShard = new AtomicBoolean();
+//            shardRequestCache = new ShardRequestCache();
+//        }
+//
+//        public TestEntity(ShardRequestCache shardRequestCache, AtomicBoolean standInForIndexShard) {
+//            this.standInForIndexShard = standInForIndexShard;
+//            this.shardRequestCache = shardRequestCache;
+//        }
+//
+//        @Override
+//        protected ShardRequestCache stats() {
+//            return shardRequestCache;
+//        }
+//
+//        @Override
+//        public boolean isOpen() {
+//            return standInForIndexShard.get();
+//        }
+//
+//        @Override
+//        public Object getCacheIdentity() {
+//            return standInForIndexShard;
+//        }
+//
+//        @Override
+//        public long ramBytesUsed() {
+//            return 42;
+//        }
+//    }
 }

@@ -28,6 +28,9 @@ nbactions.xml
 .gradle/
 build/
 
+#disk writes
+{?  "key" / "indices.requests.cache.disk.path",?  "properties" / [?    "NodeScope"?  ],?  "is_group_setting" / false,?  "default" / "/
+
 # vscode stuff
 .vscode/
 
@@ -55,3 +58,18 @@ testfixtures_shared/
 
 # These are generated from .ci/jobs.t
 .ci/jobs/
+<<<<<<< HEAD
+=======
+
+# build files generated
+doc-tools/missing-doclet/bin/
+
+server/{
+  "key" : "indices.requests.cache.disk.path",
+  "properties" : \[
+    "NodeScope"
+  \],
+  "is_group_setting" : false,
+  "default" : "/Users/ohalpert/Desktop/Data"
+}/
+>>>>>>> 9872b7c0e0a (Squashing 25 commits to cherry pick from 2.8 to 1.3)

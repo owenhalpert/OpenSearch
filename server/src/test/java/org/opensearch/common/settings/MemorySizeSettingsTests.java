@@ -74,11 +74,19 @@ public class MemorySizeSettingsTests extends OpenSearchTestCase {
         );
     }
 
-    public void testIndicesRequestCacheSetting() {
+    public void testIndicesRequestCacheHeapSetting() {
         assertMemorySizeSetting(
-            IndicesRequestCache.INDICES_CACHE_QUERY_SIZE,
-            "indices.requests.cache.size",
+            IndicesRequestCache.INDICES_CACHE_QUERY_SIZE_HEAP,
+            "indices.requests.cache.size.heap",
             new ByteSizeValue((long) (JvmInfo.jvmInfo().getMem().getHeapMax().getBytes() * 0.01))
+        );
+    }
+
+    public void testIndicesRequestCacheDiskSetting() {
+        assertMemorySizeSetting(
+            IndicesRequestCache.INDICES_CACHE_QUERY_SIZE_DISK,
+            "indices.requests.cache.size.disk",
+            new ByteSizeValue((long) 100, ByteSizeUnit.MB)
         );
     }
 

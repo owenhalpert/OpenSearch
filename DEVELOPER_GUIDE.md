@@ -13,7 +13,7 @@ So you want to contribute code to OpenSearch? Excellent! We're glad you're here.
       - [Docker](#docker)
     - [Run Tests](#run-tests)
     - [Run OpenSearch](#run-opensearch)
-  - [Use an Editor](#use-an-editor)
+  - [Use an Edtor](#use-an-editor)
     - [IntelliJ IDEA](#intellij-idea)
     - [Visual Studio Code](#visual-studio-code)
     - [Eclipse](#eclipse)

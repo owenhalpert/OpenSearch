@@ -32,9 +32,20 @@
 
 package org.opensearch.common.metrics;
 
+import java.io.Serializable;
 import java.util.concurrent.atomic.LongAdder;
 
+<<<<<<< HEAD
 public class CounterMetric implements Metric {
+=======
+/**
+ * A counter metric for tracking.
+ *
+ * @opensearch.internal
+ */
+public class CounterMetric implements Metric, Serializable {
+    public CounterMetric(){};
+>>>>>>> 9872b7c0e0a (Squashing 25 commits to cherry pick from 2.8 to 1.3)
 
     private final LongAdder counter = new LongAdder();
 

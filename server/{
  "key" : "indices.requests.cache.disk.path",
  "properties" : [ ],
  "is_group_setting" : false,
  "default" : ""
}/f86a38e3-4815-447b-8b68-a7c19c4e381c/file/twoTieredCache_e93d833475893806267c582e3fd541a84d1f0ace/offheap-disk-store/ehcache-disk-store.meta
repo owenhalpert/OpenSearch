@@ -1,0 +1,4 @@
+#Key and value types
+#Thu Jul 27 16:47:18 EDT 2023
+valueType=org.opensearch.common.bytes.BytesReference
+keyType=java.lang.Integer
