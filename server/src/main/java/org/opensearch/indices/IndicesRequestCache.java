@@ -40,11 +40,16 @@ import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.util.Accountable;
 import org.apache.lucene.util.RamUsageEstimator;
+import org.ehcache.config.builders.CacheConfigurationBuilder;
+import org.ehcache.config.builders.CacheManagerBuilder;
+import org.ehcache.config.builders.ResourcePoolsBuilder;
+import org.ehcache.config.units.MemoryUnit;
 import org.opensearch.common.CheckedSupplier;
 import org.opensearch.common.bytes.BytesReference;
-import org.opensearch.common.cache.Cache;
-import org.opensearch.common.cache.CacheBuilder;
-import org.opensearch.common.cache.CacheLoader;
+//import org.opensearch.common.cache.Cache;
+//import org.opensearch.common.cache.CacheBuilder;
+//import org.opensearch.common.cache.CacheLoader;
+import org.ehcache.*;
 import org.opensearch.common.cache.RemovalListener;
 import org.opensearch.common.cache.RemovalNotification;
 import org.opensearch.common.lucene.index.OpenSearchDirectoryReader;
@@ -56,6 +61,7 @@ import org.opensearch.common.unit.TimeValue;
 import org.opensearch.common.util.concurrent.ConcurrentCollections;
 
 import java.io.Closeable;
+import java.io.File;
 import java.io.IOException;
 import java.util.Collection;
 import java.util.Collections;
@@ -114,19 +120,31 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
         this.size = INDICES_CACHE_QUERY_SIZE.get(settings);
         this.expire = INDICES_CACHE_QUERY_EXPIRE.exists(settings) ? INDICES_CACHE_QUERY_EXPIRE.get(settings) : null;
         long sizeInBytes = size.getBytes();
-        CacheBuilder<Key, BytesReference> cacheBuilder = CacheBuilder.<Key, BytesReference>builder()
-            .setMaximumWeight(sizeInBytes)
-            .weigher((k, v) -> k.ramBytesUsed() + v.ramBytesUsed())
-            .removalListener(this);
-        if (expire != null) {
-            cacheBuilder.setExpireAfterAccess(expire);
-        }
-        cache = cacheBuilder.build();
+        // TODO: Initialize and build Ehcache with disk tier, maximum weight, weigher(?), removalListener(?), expiry
+//        CacheBuilder<Key, BytesReference> cacheBuilder = CacheBuilder.<Key, BytesReference>builder()
+//            .setMaximumWeight(sizeInBytes)
+//            .weigher((k, v) -> k.ramBytesUsed() + v.ramBytesUsed())
+//            .removalListener(this);
+//        if (expire != null) {
+//            cacheBuilder.setExpireAfterAccess(expire);
+//        }
+//        cache = cacheBuilder.build();
+        PersistentCacheManager cacheManager = CacheManagerBuilder.newCacheManagerBuilder()
+            .with(CacheManagerBuilder.persistence(new File("/Users/ohalpert/Desktop/Data", "myData")))
+            .withCache("twoTieredCache",
+                CacheConfigurationBuilder.newCacheConfigurationBuilder(Key, BytesReference,
+                    ResourcePoolsBuilder.newResourcePoolsBuilder()
+                        .heap(sizeInBytes, MemoryUnit.MB)
+                        .disk(20, MemoryUnit.MB, true) //TODO: specify Disk size
+                )
+            ).build(true);
+        Cache<Key, BytesReference> cache =
+            cacheManager.getCache("twoTieredCache", Key, BytesReference);
     }
 
     @Override
     public void close() {
-        cache.invalidateAll();
+        cache.invalidateAll(); //TODO: Call Ehcache invalidate function
     }
 
     void clear(CacheEntity entity) {
@@ -139,16 +157,16 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
         notification.getKey().entity.onRemoval(notification);
     }
 
-    BytesReference getOrCompute(
-        CacheEntity cacheEntity,
-        CheckedSupplier<BytesReference, IOException> loader,
-        DirectoryReader reader,
-        BytesReference cacheKey
+    BytesReference getOrCompute( //TODO: Fix method to work with Ehcache
+                                 CacheEntity cacheEntity,
+                                 CheckedSupplier<BytesReference, IOException> loader,
+                                 DirectoryReader reader,
+                                 BytesReference cacheKey
     ) throws Exception {
         assert reader.getReaderCacheHelper() != null;
         final Key key = new Key(cacheEntity, reader.getReaderCacheHelper().getKey(), cacheKey);
         Loader cacheLoader = new Loader(cacheEntity, loader);
-        BytesReference value = cache.computeIfAbsent(key, cacheLoader);
+        BytesReference value = cache.compueIfAbsent(key, cacheLoader);
         if (cacheLoader.isLoaded()) {
             key.entity.onMiss();
             // see if its the first time we see this reader, and make sure to register a cleanup key
@@ -173,7 +191,7 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
      */
     void invalidate(CacheEntity cacheEntity, DirectoryReader reader, BytesReference cacheKey) {
         assert reader.getReaderCacheHelper() != null;
-        cache.invalidate(new Key(cacheEntity, reader.getReaderCacheHelper().getKey(), cacheKey));
+        cache.invalidate(new Key(cacheEntity, reader.getReaderCacheHelper().getKey(), cacheKey)); //TODO: call Ehcache invalidate method
     }
 
     /**
@@ -357,14 +375,14 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
             }
         }
 
-        cache.refresh();
+        cache.refresh(); //TODO call Ehcache refresh method?
     }
 
     /**
      * Returns the current size of the cache
      */
     int count() {
-        return cache.count();
+        return cache.getSize();
     }
 
     int numRegisteredCloseListeners() { // for testing
