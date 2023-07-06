@@ -120,7 +120,7 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
         this.size = INDICES_CACHE_QUERY_SIZE.get(settings);
         this.expire = INDICES_CACHE_QUERY_EXPIRE.exists(settings) ? INDICES_CACHE_QUERY_EXPIRE.get(settings) : null;
         long sizeInBytes = size.getBytes();
-        // TODO: Initialize and build Ehcache with disk tier, maximum weight, weigher(?), removalListener(?), expiry
+        // TODO: Initialize and build Ehcache with disk tier, maximum weight, weigher, removalListener(?), expiry
 //        CacheBuilder<Key, BytesReference> cacheBuilder = CacheBuilder.<Key, BytesReference>builder()
 //            .setMaximumWeight(sizeInBytes)
 //            .weigher((k, v) -> k.ramBytesUsed() + v.ramBytesUsed())
