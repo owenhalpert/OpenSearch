@@ -14,6 +14,7 @@ import org.opensearch.action.ActionRequestValidationException;
 import org.opensearch.common.io.stream.StreamInput;
 import org.opensearch.common.io.stream.StreamOutput;
 import org.opensearch.extensions.proto.ExtensionTransportMessageProto.ExtensionTransportMessage;
+import org.opensearch.extensions.*;
 
 import java.io.IOException;
 

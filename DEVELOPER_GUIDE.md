@@ -12,7 +12,7 @@
       - [Generated Code](#generated-code)
     - [Run Tests](#run-tests)
     - [Run OpenSearch](#run-opensearch)
-  - [Use an Editor](#use-an-editor)
+  - [Use an Edtor](#use-an-editor)
     - [IntelliJ IDEA](#intellij-idea)
       - [Remote development using JetBrains Gateway](#remote-development-using-jetbrains-gateway)
     - [Visual Studio Code](#visual-studio-code)

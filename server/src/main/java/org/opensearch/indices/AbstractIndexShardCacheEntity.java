@@ -48,6 +48,8 @@ abstract class AbstractIndexShardCacheEntity implements IndicesRequestCache.Cach
     /**
      * Get the {@linkplain ShardRequestCache} used to track cache statistics.
      */
+    public AbstractIndexShardCacheEntity() {
+    }
     protected abstract ShardRequestCache stats();
 
     @Override

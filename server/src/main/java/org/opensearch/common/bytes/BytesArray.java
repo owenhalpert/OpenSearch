@@ -50,6 +50,11 @@ public final class BytesArray extends AbstractBytesReference {
     private final byte[] bytes;
     private final int offset;
     private final int length;
+    public BytesArray(){
+        bytes = null;
+        offset = 0;
+        length = 0;
+    }
 
     public BytesArray(String bytes) {
         this(new BytesRef(bytes));
