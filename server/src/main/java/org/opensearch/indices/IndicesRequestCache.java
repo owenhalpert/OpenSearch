@@ -44,12 +44,16 @@ import org.ehcache.config.builders.CacheConfigurationBuilder;
 import org.ehcache.config.builders.CacheManagerBuilder;
 import org.ehcache.config.builders.ResourcePoolsBuilder;
 import org.ehcache.config.units.MemoryUnit;
+import org.ehcache.core.internal.statistics.DefaultStatisticsService;
+import org.ehcache.core.spi.service.StatisticsService;
+import org.ehcache.expiry.ExpiryPolicy;
 import org.opensearch.common.CheckedSupplier;
 import org.opensearch.common.bytes.BytesReference;
 //import org.opensearch.common.cache.Cache;
 //import org.opensearch.common.cache.CacheBuilder;
 //import org.opensearch.common.cache.CacheLoader;
 import org.ehcache.*;
+import org.opensearch.common.cache.CacheLoader;
 import org.opensearch.common.cache.RemovalListener;
 import org.opensearch.common.cache.RemovalNotification;
 import org.opensearch.common.lucene.index.OpenSearchDirectoryReader;
@@ -63,12 +67,15 @@ import org.opensearch.common.util.concurrent.ConcurrentCollections;
 import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
+import java.sql.Time;
+import java.time.Duration;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentMap;
+import java.util.function.Supplier;
 
 /**
  * The indices request cache allows to cache a shard level request stage responses, helping with improving
@@ -113,13 +120,14 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
     private final ConcurrentMap<CleanupKey, Boolean> registeredClosedListeners = ConcurrentCollections.newConcurrentMap();
     private final Set<CleanupKey> keysToClean = ConcurrentCollections.newConcurrentSet();
     private final ByteSizeValue size;
-    private final TimeValue expire;
-    private final Cache<Key, BytesReference> cache;
+    private final Duration expire; // Changed to Duration
+    private final org.ehcache.Cache<Key, BytesReference> cache;
 
     IndicesRequestCache(Settings settings) {
         this.size = INDICES_CACHE_QUERY_SIZE.get(settings);
-        this.expire = INDICES_CACHE_QUERY_EXPIRE.exists(settings) ? INDICES_CACHE_QUERY_EXPIRE.get(settings) : null;
+        this.expire = INDICES_CACHE_QUERY_EXPIRE.exists(settings) ? Duration.ofSeconds(INDICES_CACHE_QUERY_EXPIRE.get(settings).getSeconds()) : null;
         long sizeInBytes = size.getBytes();
+        ExpiryPolicy TTLExpiryPolicy = new TTLExpiryPolicy(expire);
         // TODO: Initialize and build Ehcache with disk tier, maximum weight, weigher, removalListener(?), expiry
 //        CacheBuilder<Key, BytesReference> cacheBuilder = CacheBuilder.<Key, BytesReference>builder()
 //            .setMaximumWeight(sizeInBytes)
@@ -132,19 +140,19 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
         PersistentCacheManager cacheManager = CacheManagerBuilder.newCacheManagerBuilder()
             .with(CacheManagerBuilder.persistence(new File("/Users/ohalpert/Desktop/Data", "myData")))
             .withCache("twoTieredCache",
-                CacheConfigurationBuilder.newCacheConfigurationBuilder(Key, BytesReference,
+                CacheConfigurationBuilder.newCacheConfigurationBuilder(Key.class, BytesReference.class,
                     ResourcePoolsBuilder.newResourcePoolsBuilder()
                         .heap(sizeInBytes, MemoryUnit.MB)
-                        .disk(20, MemoryUnit.MB, true) //TODO: specify Disk size
+                        .disk(20, MemoryUnit.MB, true)
                 )
-            ).build(true);
-        Cache<Key, BytesReference> cache =
-            cacheManager.getCache("twoTieredCache", Key, BytesReference);
+            )
+            .build(true);
+        cache = cacheManager.getCache("twoTieredCache", Key.class, BytesReference.class);
     }
 
     @Override
     public void close() {
-        cache.invalidateAll(); //TODO: Call Ehcache invalidate function
+        cache.clear(); //TODO: Call Ehcache invalidate function
     }
 
     void clear(CacheEntity entity) {
@@ -158,16 +166,16 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
     }
 
     BytesReference getOrCompute( //TODO: Fix method to work with Ehcache
-                                 CacheEntity cacheEntity,
-                                 CheckedSupplier<BytesReference, IOException> loader,
-                                 DirectoryReader reader,
-                                 BytesReference cacheKey
+     CacheEntity cacheEntity,
+     CheckedSupplier<BytesReference, IOException> loader,
+     DirectoryReader reader,
+     BytesReference cacheKey
     ) throws Exception {
         assert reader.getReaderCacheHelper() != null;
         final Key key = new Key(cacheEntity, reader.getReaderCacheHelper().getKey(), cacheKey);
         Loader cacheLoader = new Loader(cacheEntity, loader);
-        BytesReference value = cache.compueIfAbsent(key, cacheLoader);
-        if (cacheLoader.isLoaded()) {
+        BytesReference value = cache.get(key);
+        if (value == null) {
             key.entity.onMiss();
             // see if its the first time we see this reader, and make sure to register a cleanup key
             CleanupKey cleanupKey = new CleanupKey(cacheEntity, reader.getReaderCacheHelper().getKey());
@@ -191,7 +199,7 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
      */
     void invalidate(CacheEntity cacheEntity, DirectoryReader reader, BytesReference cacheKey) {
         assert reader.getReaderCacheHelper() != null;
-        cache.invalidate(new Key(cacheEntity, reader.getReaderCacheHelper().getKey(), cacheKey)); //TODO: call Ehcache invalidate method
+        cache.remove(new Key(cacheEntity, reader.getReaderCacheHelper().getKey(), cacheKey)); // invalidate > remove
     }
 
     /**
@@ -363,8 +371,8 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
             }
         }
         if (!currentKeysToClean.isEmpty() || !currentFullClean.isEmpty()) {
-            for (Iterator<Key> iterator = cache.keys().iterator(); iterator.hasNext();) {
-                Key key = iterator.next();
+            for (Iterator<Cache.Entry<Key, BytesReference>> iterator = cache.iterator(); iterator.hasNext();) { //changed to iterator over keys and values
+                Key key = iterator.next().getKey(); // changed to .getKey()
                 if (currentFullClean.contains(key.entity.getCacheIdentity())) {
                     iterator.remove();
                 } else {
@@ -381,11 +389,34 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
     /**
      * Returns the current size of the cache
      */
-    int count() {
+    int count() { //TODO count of underlying map
         return cache.getSize();
     }
 
     int numRegisteredCloseListeners() { // for testing
         return registeredClosedListeners.size();
     }
-}
+
+    public class TTLExpiryPolicy<K,V> implements ExpiryPolicy {
+
+        Duration ttl;
+
+        public TTLExpiryPolicy(Duration ttl) {
+            this.ttl = ttl;
+        }
+
+        @Override
+        public Duration getExpiryForCreation(Object key, Object value) {
+            return ttl;
+        }
+
+        @Override
+        public Duration getExpiryForAccess(Object key, Supplier value) {
+            return null;
+        }
+
+        @Override
+        public Duration getExpiryForUpdate(Object key, Supplier oldValue, Object newValue) {
+            return null;
+        }
+    }
