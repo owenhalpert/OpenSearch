@@ -39,6 +39,7 @@ import org.apache.logging.log4j.Logger;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.util.Accountable;
+import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.RamUsageEstimator;
 import org.ehcache.config.builders.CacheConfigurationBuilder;
 import org.ehcache.config.builders.CacheManagerBuilder;
@@ -46,6 +47,7 @@ import org.ehcache.config.builders.ResourcePoolsBuilder;
 import org.ehcache.config.units.MemoryUnit;
 import org.ehcache.core.internal.statistics.DefaultStatisticsService;
 import org.ehcache.core.spi.service.StatisticsService;
+import org.ehcache.core.statistics.CacheStatistics;
 import org.ehcache.expiry.ExpiryPolicy;
 import org.opensearch.common.CheckedSupplier;
 import org.opensearch.common.bytes.BytesReference;
@@ -63,6 +65,7 @@ import org.opensearch.common.settings.Settings;
 import org.opensearch.common.unit.ByteSizeValue;
 import org.opensearch.common.unit.TimeValue;
 import org.opensearch.common.util.concurrent.ConcurrentCollections;
+import org.opensearch.common.util.concurrent.ReleasableLock;
 
 import java.io.Closeable;
 import java.io.File;
@@ -74,7 +77,10 @@ import java.util.Collections;
 import java.util.Iterator;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ExecutionException;
+import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
 /**
@@ -122,11 +128,13 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
     private final ByteSizeValue size;
     private final Duration expire; // Changed to Duration
     private final org.ehcache.Cache<Key, BytesReference> cache;
+    private DefaultStatisticsService statisticsService;
 
     IndicesRequestCache(Settings settings) {
         this.size = INDICES_CACHE_QUERY_SIZE.get(settings);
         this.expire = INDICES_CACHE_QUERY_EXPIRE.exists(settings) ? Duration.ofSeconds(INDICES_CACHE_QUERY_EXPIRE.get(settings).getSeconds()) : null;
         long sizeInBytes = size.getBytes();
+        this.statisticsService = new DefaultStatisticsService();
         ExpiryPolicy TTLExpiryPolicy = new TTLExpiryPolicy(expire);
         // TODO: Initialize and build Ehcache with disk tier, maximum weight, weigher, removalListener(?), expiry
 //        CacheBuilder<Key, BytesReference> cacheBuilder = CacheBuilder.<Key, BytesReference>builder()
@@ -146,13 +154,14 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
                         .disk(20, MemoryUnit.MB, true)
                 )
             )
+            .using(statisticsService)
             .build(true);
         cache = cacheManager.getCache("twoTieredCache", Key.class, BytesReference.class);
     }
 
     @Override
     public void close() {
-        cache.clear(); //TODO: Call Ehcache invalidate function
+        cache.clear();
     }
 
     void clear(CacheEntity entity) {
@@ -165,7 +174,7 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
         notification.getKey().entity.onRemoval(notification);
     }
 
-    BytesReference getOrCompute( //TODO: Fix method to work with Ehcache
+    BytesReference getOrCompute(
      CacheEntity cacheEntity,
      CheckedSupplier<BytesReference, IOException> loader,
      DirectoryReader reader,
@@ -177,7 +186,8 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
         BytesReference value = cache.get(key);
         if (value == null) {
             key.entity.onMiss();
-            // see if its the first time we see this reader, and make sure to register a cleanup key
+            // see if it's the first time we see this reader, and make sure to register a cleanup key
+            value = compute(key, cacheLoader);
             CleanupKey cleanupKey = new CleanupKey(cacheEntity, reader.getReaderCacheHelper().getKey());
             if (!registeredClosedListeners.containsKey(cleanupKey)) {
                 Boolean previous = registeredClosedListeners.putIfAbsent(cleanupKey, Boolean.TRUE);
@@ -189,6 +199,67 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
             key.entity.onHit();
         }
         return value;
+    }
+
+    public BytesReference compute(Key key, Loader cacheLoader) {
+        CompletableFuture<Cache.Entry> future;
+        CompletableFuture<Cache.Entry> completableFuture = new CompletableFuture<>();
+
+//        try (ReleasableLock ignored = segment.writeLock.acquire()) {
+//            future = segment.map.putIfAbsent(key, completableFuture);
+//        }
+
+        cache.put(key, completableFuture);
+
+        BiFunction<? super org.opensearch.common.cache.Cache.Entry<K, V>, Throwable, ? extends V> handler = (ok, ex) -> {
+            if (ok != null) {
+                try (ReleasableLock ignored = lruLock.acquire()) {
+                    promote(ok, now);
+                }
+                return ok.value;
+            } else {
+                try (ReleasableLock ignored = segment.writeLock.acquire()) {
+                    CompletableFuture<org.opensearch.common.cache.Cache.Entry<K, V>> sanity = segment.map.get(key);
+                    if (sanity != null && sanity.isCompletedExceptionally()) {
+                        segment.map.remove(key);
+                    }
+                }
+                return null;
+            }
+        };
+
+        CompletableFuture<V> completableValue;
+        if (future == null) {
+            future = completableFuture;
+            completableValue = future.handle(handler);
+            V loaded;
+            try {
+                loaded = loader.load(key);
+            } catch (Exception e) {
+                future.completeExceptionally(e);
+                throw new ExecutionException(e);
+            }
+            if (loaded == null) {
+                NullPointerException npe = new NullPointerException("loader returned a null value");
+                future.completeExceptionally(npe);
+                throw new ExecutionException(npe);
+            } else {
+                future.complete(new org.opensearch.common.cache.Cache.Entry<>(key, loaded, now));
+            }
+        } else {
+            completableValue = future.handle(handler);
+        }
+
+        try {
+            value = completableValue.get();
+            // check to ensure the future hasn't been completed with an exception
+            if (future.isCompletedExceptionally()) {
+                future.get(); // call get to force the exception to be thrown for other concurrent callers
+                throw new IllegalStateException("the future was completed exceptionally but no exception was thrown");
+            }
+        } catch (InterruptedException e) {
+            throw new IllegalStateException(e);
+        } return value;
     }
 
     /**
@@ -389,8 +460,9 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
     /**
      * Returns the current size of the cache
      */
-    int count() { //TODO count of underlying map
-        return cache.getSize();
+    int count() {
+        CacheStatistics CacheStat = this.statisticsService.getCacheStatistics("myCache");
+        return Math.toIntExact(CacheStat.getTierStatistics().get("Disk").getMappings());
     }
 
     int numRegisteredCloseListeners() { // for testing
