@@ -130,7 +130,7 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
     private final ByteSizeValue size;
     private final TimeValue expire;
     private final org.ehcache.Cache<Key, BytesReference> cache;
-    private DefaultStatisticsService statisticsService;
+    private final DefaultStatisticsService statisticsService;
 
     IndicesRequestCache(Settings settings) {
         this.size = INDICES_CACHE_QUERY_SIZE.get(settings);
@@ -144,7 +144,7 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
                     ResourcePoolsBuilder.newResourcePoolsBuilder()
                         .heap(sizeInBytes, MemoryUnit.MB)
                         .disk(20, MemoryUnit.MB, true)
-//                ).withExpiry(ExpiryPolicyBuilder.timeToLiveExpiration(Duration.ofSeconds(expire.duration())))
+//                ).withExpiry(ExpiryPolicyBuilder.timeToLiveExpiration(Duration.ofSeconds(expire.duration()))) TODO: add TTL
                     )
                 )
             .using(statisticsService)
@@ -195,52 +195,17 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
     }
 
     public BytesReference compute(Key key, Loader cacheLoader) throws ExecutionException {
+        //TODO: concurrency in this method is usually handled by completableFutures, overlooked for PoC
         BytesReference value;
-        CompletableFuture<Cache.Entry<Key,BytesReference>> future;
-        CompletableFuture<Cache.Entry<Key,BytesReference>> completableFuture = new CompletableFuture<>();
-
-        BiFunction<? super Key, Throwable, ? extends BytesReference> handler = (ok, ex) -> {
-            if (ok != null) {
-                return ok.value;
-            } else {
-                CompletableFuture<BytesReference> sanity = cache.get(key);
-                if (sanity != null && sanity.isCompletedExceptionally()) {
-                    cache.remove(key);
-                }
-                return null;
-            }
-        };
-
-        CompletableFuture<BytesReference> completableValue;
-        // Assumes the specified key is not already associated with a value (or is mapped to null)
-        future = completableFuture;
-        completableValue = future.handle(handler);
-        BytesReference loaded;
         try {
-            loaded = cacheLoader.load(key);
+            value = cacheLoader.load(key);
         } catch (Exception e) {
-            future.completeExceptionally(e);
             throw new ExecutionException(e);
         }
-        if (loaded == null) {
+        if (value == null) {
             NullPointerException npe = new NullPointerException("loader returned a null value");
-            future.completeExceptionally(npe);
             throw new ExecutionException(npe);
-        } else {
-            future.complete(BytesReference);
-        }
-
-        try {
-            value = completableValue.get();
-            // check to ensure the future hasn't been completed with an exception
-            if (future.isCompletedExceptionally()) {
-                future.get(); // call get to force the exception to be thrown for other concurrent callers
-                throw new IllegalStateException("the future was completed exceptionally but no exception was thrown");
-            }
-        } catch (InterruptedException e) {
-            throw new IllegalStateException(e);
-        }
-        cache.put(key, value);
+        } cache.put(key, value);
         return value;
     }
 
@@ -296,8 +261,8 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
         void onCached(Key key, BytesReference value);
 
         /**
-         * Returns <code>true</code> iff the resource behind this entity is still open ie.
-         * entities associated with it can remain in the cache. ie. IndexShard is still open.
+         * Returns <code>true</code> iff the resource behind this entity is still open i.e.
+         * entities associated with it can remain in the cache. i.e. IndexShard is still open.
          */
         boolean isOpen();
 
@@ -443,7 +408,7 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
      */
     int count() {
         CacheStatistics CacheStat = this.statisticsService.getCacheStatistics("myCache");
-        return Math.toIntExact(CacheStat.getTierStatistics().get("Disk").getMappings());
+        return Math.toIntExact(CacheStat.getTierStatistics().get("Disk").getMappings()); //TODO: this method may be computationally expensive — unfortunately Ehcache doesn't dynamically update count like OS
     }
 
     int numRegisteredCloseListeners() { // for testing
