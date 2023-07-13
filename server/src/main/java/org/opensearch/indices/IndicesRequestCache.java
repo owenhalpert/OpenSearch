@@ -196,26 +196,25 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
 
     public BytesReference compute(Key key, Loader cacheLoader) throws ExecutionException {
         BytesReference value;
-        CompletableFuture<Cache.Entry> future;
-        CompletableFuture<Cache.Entry> completableFuture = new CompletableFuture<>();
+        CompletableFuture<Cache.Entry<Key,BytesReference>> future;
+        CompletableFuture<Cache.Entry<Key,BytesReference>> completableFuture = new CompletableFuture<>();
 
-        BiFunction<? super org.opensearch.common.cache.Cache.Entry<K, V>, Throwable, ? extends V> handler = (ok, ex) -> {
+        BiFunction<? super Key, Throwable, ? extends BytesReference> handler = (ok, ex) -> {
             if (ok != null) {
                 return ok.value;
             } else {
-                CompletableFuture<org.opensearch.common.cache.Cache.Entry<K, V>> sanity = segment.map.get(key);
+                CompletableFuture<BytesReference> sanity = cache.get(key);
                 if (sanity != null && sanity.isCompletedExceptionally()) {
-                    segment.map.remove(key);
+                    cache.remove(key);
                 }
                 return null;
             }
         };
 
         CompletableFuture<BytesReference> completableValue;
-
-
         // Assumes the specified key is not already associated with a value (or is mapped to null)
         future = completableFuture;
+        completableValue = future.handle(handler);
         BytesReference loaded;
         try {
             loaded = cacheLoader.load(key);
@@ -228,7 +227,7 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
             future.completeExceptionally(npe);
             throw new ExecutionException(npe);
         } else {
-            future.complete(loaded);
+            future.complete(BytesReference);
         }
 
         try {
