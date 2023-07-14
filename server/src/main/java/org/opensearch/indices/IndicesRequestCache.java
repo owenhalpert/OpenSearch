@@ -143,10 +143,10 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
                 CacheConfigurationBuilder.newCacheConfigurationBuilder(Key.class, BytesReference.class,
                     ResourcePoolsBuilder.newResourcePoolsBuilder()
                         .heap(sizeInBytes, MemoryUnit.MB)
-                        .disk(20, MemoryUnit.MB, true)
-//                ).withExpiry(ExpiryPolicyBuilder.timeToLiveExpiration(Duration.ofSeconds(expire.duration()))) TODO: add TTL
-                    )
+                        .disk(sizeInBytes + 1, MemoryUnit.MB, true)
+//                ).withExpiry(ExpiryPolicyBuilder.timeToLiveExpiration(Duration.ofMillis(expire.millis()))) TODO: Add TTL only if expire != null
                 )
+            )
             .using(statisticsService)
             .build(true);
         cache = cacheManager.getCache("twoTieredCache", Key.class, BytesReference.class);
