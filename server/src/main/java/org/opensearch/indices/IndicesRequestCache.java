@@ -72,6 +72,7 @@ import org.opensearch.common.util.concurrent.ReleasableLock;
 import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
+import java.io.Serializable;
 import java.time.Duration;
 import java.util.Collection;
 import java.util.Collections;
@@ -293,7 +294,7 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
      *
      * @opensearch.internal
      */
-    static class Key implements Accountable {
+    static class Key implements Accountable, Serializable {
         private static final long BASE_RAM_BYTES_USED = RamUsageEstimator.shallowSizeOfInstance(Key.class);
 
         public final CacheEntity entity; // use as identity equality
@@ -407,7 +408,7 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
      * Returns the current size of the cache
      */
     int count() {
-        CacheStatistics CacheStat = this.statisticsService.getCacheStatistics("myCache");
+        CacheStatistics CacheStat = this.statisticsService.getCacheStatistics("twoTieredCache");
         return Math.toIntExact(CacheStat.getTierStatistics().get("Disk").getMappings()); //TODO: this method may be computationally expensive — unfortunately Ehcache doesn't dynamically update count like OS
     }
 
