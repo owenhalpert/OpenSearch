@@ -9,15 +9,15 @@
 package org.opensearch.indices;
 
 import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.index.TermVectors;
-import org.opensearch.index.Index;
 
-import java.io.IOException;
 import java.io.Serializable;
 
-public class SerializableIndexReader extends IndexReader implements Serializable {
-
-    @Override
-    public TermVectors termVectors() throws IOException {
+public class SerializableCacheKey implements Serializable {
+    private IndexReader.CacheKey cacheKey;
+    public SerializableCacheKey(IndexReader.CacheKey cacheKey) {
+        this.cacheKey = cacheKey;
+    }
+    public IndexReader.CacheKey getCacheKey() {
+        return cacheKey;
     }
 }
