@@ -298,12 +298,12 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
         private static final long BASE_RAM_BYTES_USED = RamUsageEstimator.shallowSizeOfInstance(Key.class);
 
         public final CacheEntity entity; // use as identity equality
-        public final IndexReader.CacheKey readerCacheKey;
+        public final SerializableCacheKey readerCacheKey;
         public final BytesReference value;
 
         Key(CacheEntity entity, IndexReader.CacheKey readerCacheKey, BytesReference value) {
             this.entity = entity;
-            this.readerCacheKey = Objects.requireNonNull(readerCacheKey);
+            this.readerCacheKey = new SerializableCacheKey(Objects.requireNonNull(readerCacheKey));
             this.value = value;
         }
 
@@ -396,7 +396,7 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
                 if (currentFullClean.contains(key.entity.getCacheIdentity())) {
                     iterator.remove(); //
                 } else {
-                    if (currentKeysToClean.contains(new CleanupKey(key.entity, key.readerCacheKey))) {
+                    if (currentKeysToClean.contains(new CleanupKey(key.entity, key.readerCacheKey.getCacheKey()))) {
                         iterator.remove();
                     }
                 }
