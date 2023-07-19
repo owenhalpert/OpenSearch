@@ -385,7 +385,7 @@ public class IndicesRequestCacheTests extends OpenSearchTestCase {
         assertEquals(1, requestCacheStats.stats().getMissCount());
         assertEquals(0, requestCacheStats.stats().getEvictions());
         assertFalse(loader.loadedFromCache);
-        assertEquals(1, cache.count());
+        assertEquals(1, cache.count()); // Fails here because puts are broken due to serialization
 
         // cache hit
         entity = new TestEntity(requestCacheStats, indexShard);

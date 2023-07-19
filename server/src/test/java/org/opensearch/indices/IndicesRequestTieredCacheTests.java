@@ -88,7 +88,7 @@ public class IndicesRequestTieredCacheTests extends OpenSearchTestCase implement
         assertEquals(1, requestCacheStats.stats().getMissCount());
         assertEquals(0, requestCacheStats.stats().getEvictions());
         assertFalse(loader.loadedFromCache);
-//        assertEquals(1, cache.count());
+        assertEquals(1, cache.count());
 
         // cache hit
         entity = new TestEntity(requestCacheStats, indexShard);
