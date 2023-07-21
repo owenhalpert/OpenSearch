@@ -39,6 +39,7 @@ import org.opensearch.common.SuppressForbidden;
 import org.opensearch.index.shard.ShardId;
 
 import java.io.IOException;
+import java.io.Serializable;
 
 /**
  * A {@link org.apache.lucene.index.FilterDirectoryReader} that exposes

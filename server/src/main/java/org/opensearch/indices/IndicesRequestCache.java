@@ -147,7 +147,7 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
                         .disk(sizeInBytes + 1, MemoryUnit.MB, true)
 //                ).withExpiry(ExpiryPolicyBuilder.timeToLiveExpiration(Duration.ofMillis(expire.millis()))) TODO: Add TTL only if expire != null
                 )
-            )
+            ).withSerializer(Key.class, KeySerializer.class)
             .using(statisticsService)
             .build(true);
         cache = cacheManager.getCache("twoTieredCache", Key.class, BytesReference.class);
@@ -298,7 +298,7 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
         private static final long BASE_RAM_BYTES_USED = RamUsageEstimator.shallowSizeOfInstance(Key.class);
 
         public final CacheEntity entity; // use as identity equality
-        public final transient IndexReader.CacheKey readerCacheKey;
+        public final IndexReader.CacheKey readerCacheKey;
         public final BytesReference value;
 
         Key(CacheEntity entity, IndexReader.CacheKey readerCacheKey, BytesReference value) {
