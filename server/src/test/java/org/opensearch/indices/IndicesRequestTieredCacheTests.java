@@ -45,6 +45,7 @@ import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.BytesRef;
+import org.junit.Test;
 import org.opensearch.common.CheckedSupplier;
 import org.opensearch.common.bytes.AbstractBytesReference;
 import org.opensearch.common.bytes.BytesReference;
@@ -514,6 +515,11 @@ public class IndicesRequestTieredCacheTests extends OpenSearchTestCase implement
     private class TestEntity extends AbstractIndexShardCacheEntity implements Serializable {
         private final AtomicBoolean standInForIndexShard;
         private final ShardRequestCache shardRequestCache;
+
+        public TestEntity() {
+            standInForIndexShard = new AtomicBoolean();
+            shardRequestCache = new ShardRequestCache();
+        }
 
         private TestEntity(ShardRequestCache shardRequestCache, AtomicBoolean standInForIndexShard) {
             this.standInForIndexShard = standInForIndexShard;

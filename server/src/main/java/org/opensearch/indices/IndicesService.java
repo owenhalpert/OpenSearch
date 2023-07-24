@@ -1694,6 +1694,9 @@ public class IndicesService extends AbstractLifecycleComponent
      * @opensearch.internal
      */
     static final class IndexShardCacheEntity extends AbstractIndexShardCacheEntity {
+        public IndexShardCacheEntity() throws IOException {
+            indexShard = null;
+        }
         private static final long BASE_RAM_BYTES_USED = RamUsageEstimator.shallowSizeOfInstance(IndexShardCacheEntity.class);
         private final IndexShard indexShard;
 
