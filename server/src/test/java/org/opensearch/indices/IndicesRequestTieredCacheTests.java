@@ -60,6 +60,7 @@ import org.opensearch.index.cache.request.ShardRequestCache;
 import org.opensearch.index.query.TermQueryBuilder;
 import org.opensearch.index.shard.ShardId;
 import org.opensearch.test.OpenSearchTestCase;
+import org.opensearch.indices.IndicesRequestCache.TestEntity;
 
 import java.io.IOException;
 import java.io.Serializable;
@@ -512,38 +513,38 @@ public class IndicesRequestTieredCacheTests extends OpenSearchTestCase implement
         }
     }
 
-    private class TestEntity extends AbstractIndexShardCacheEntity implements Serializable {
-        private final AtomicBoolean standInForIndexShard;
-        private final ShardRequestCache shardRequestCache;
-
-        public TestEntity() {
-            standInForIndexShard = new AtomicBoolean();
-            shardRequestCache = new ShardRequestCache();
-        }
-
-        private TestEntity(ShardRequestCache shardRequestCache, AtomicBoolean standInForIndexShard) {
-            this.standInForIndexShard = standInForIndexShard;
-            this.shardRequestCache = shardRequestCache;
-        }
-
-        @Override
-        protected ShardRequestCache stats() {
-            return shardRequestCache;
-        }
-
-        @Override
-        public boolean isOpen() {
-            return standInForIndexShard.get();
-        }
-
-        @Override
-        public Object getCacheIdentity() {
-            return standInForIndexShard;
-        }
-
-        @Override
-        public long ramBytesUsed() {
-            return 42;
-        }
-    }
+//    public class TestEntity extends AbstractIndexShardCacheEntity implements Serializable {
+//        private final AtomicBoolean standInForIndexShard;
+//        private final ShardRequestCache shardRequestCache;
+//
+//        public TestEntity() {
+//            standInForIndexShard = new AtomicBoolean();
+//            shardRequestCache = new ShardRequestCache();
+//        }
+//
+//        public TestEntity(ShardRequestCache shardRequestCache, AtomicBoolean standInForIndexShard) {
+//            this.standInForIndexShard = standInForIndexShard;
+//            this.shardRequestCache = shardRequestCache;
+//        }
+//
+//        @Override
+//        protected ShardRequestCache stats() {
+//            return shardRequestCache;
+//        }
+//
+//        @Override
+//        public boolean isOpen() {
+//            return standInForIndexShard.get();
+//        }
+//
+//        @Override
+//        public Object getCacheIdentity() {
+//            return standInForIndexShard;
+//        }
+//
+//        @Override
+//        public long ramBytesUsed() {
+//            return 42;
+//        }
+//    }
 }

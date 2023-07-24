@@ -19,6 +19,8 @@ import org.ehcache.spi.serialization.Serializer;
 import org.opensearch.common.bytes.BytesReference;
 import org.opensearch.common.metrics.CounterMetric;
 import org.opensearch.indices.IndicesRequestCache.Key;
+import org.opensearch.indices.IndicesRequestCache.TestEntity;
+import org.opensearch.common.bytes.BytesArray;
 
 
 import java.io.ByteArrayOutputStream;
@@ -44,8 +46,8 @@ public class KeySerializer implements Serializer<Key> {
     public IndicesRequestCache.Key read(ByteBuffer binary) throws ClassNotFoundException, SerializerException {
         Input input = new Input(binary.array());
         IndexReader.CacheKey readerCacheKey = kryo.readObject(input, IndexReader.CacheKey.class);
-        AbstractIndexShardCacheEntity entity = kryo.readObject(input, AbstractIndexShardCacheEntity.class);
-        BytesReference value = kryo.readObject(input, BytesReference.class);
+        IndicesRequestCache.TestEntity entity = kryo.readObject(input, IndicesRequestCache.TestEntity.class);
+        BytesArray value = kryo.readObject(input, BytesArray.class);
         IndicesRequestCache.Key key = new Key(entity, readerCacheKey, value);
         return key;
     }

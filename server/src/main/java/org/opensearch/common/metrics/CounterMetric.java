@@ -41,6 +41,7 @@ import java.util.concurrent.atomic.LongAdder;
  * @opensearch.internal
  */
 public class CounterMetric implements Metric, Serializable {
+    public CounterMetric(){};
 
     private final LongAdder counter = new LongAdder();
 

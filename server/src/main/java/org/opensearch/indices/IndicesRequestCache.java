@@ -68,6 +68,7 @@ import org.opensearch.common.unit.ByteSizeValue;
 import org.opensearch.common.unit.TimeValue;
 import org.opensearch.common.util.concurrent.ConcurrentCollections;
 import org.opensearch.common.util.concurrent.ReleasableLock;
+import org.opensearch.index.cache.request.ShardRequestCache;
 
 import java.io.Closeable;
 import java.io.File;
@@ -82,6 +83,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
 import java.util.concurrent.TimeUnit;
@@ -326,6 +328,7 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
             if (Objects.equals(readerCacheKey, key.readerCacheKey) == false) return false;
             if (!entity.getCacheIdentity().equals(key.entity.getCacheIdentity())) return false;
             if (!value.equals(key.value)) return false;
+            if (value.hashCode() == key.value.hashCode())
             return true;
         }
 
@@ -414,5 +417,40 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
 
     int numRegisteredCloseListeners() { // for testing
         return registeredClosedListeners.size();
+    }
+
+    public static class TestEntity extends AbstractIndexShardCacheEntity implements Serializable {
+        private final AtomicBoolean standInForIndexShard;
+        private final ShardRequestCache shardRequestCache;
+
+        public TestEntity() {
+            standInForIndexShard = new AtomicBoolean();
+            shardRequestCache = new ShardRequestCache();
+        }
+
+        public TestEntity(ShardRequestCache shardRequestCache, AtomicBoolean standInForIndexShard) {
+            this.standInForIndexShard = standInForIndexShard;
+            this.shardRequestCache = shardRequestCache;
+        }
+
+        @Override
+        protected ShardRequestCache stats() {
+            return shardRequestCache;
+        }
+
+        @Override
+        public boolean isOpen() {
+            return standInForIndexShard.get();
+        }
+
+        @Override
+        public Object getCacheIdentity() {
+            return standInForIndexShard;
+        }
+
+        @Override
+        public long ramBytesUsed() {
+            return 42;
+        }
     }
 }
