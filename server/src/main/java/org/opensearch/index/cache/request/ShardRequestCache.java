@@ -50,6 +50,9 @@ public final class ShardRequestCache implements Serializable {
     final CounterMetric hitCount = new CounterMetric();
     final CounterMetric missCount = new CounterMetric();
 
+    public ShardRequestCache() {
+    }
+
     public RequestCacheStats stats() {
         return new RequestCacheStats(totalMetric.count(), evictionsMetric.count(), hitCount.count(), missCount.count());
     }

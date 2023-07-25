@@ -300,12 +300,12 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
         private static final long BASE_RAM_BYTES_USED = RamUsageEstimator.shallowSizeOfInstance(Key.class);
 
         public final CacheEntity entity; // use as identity equality
-        public final IndexReader.CacheKey readerCacheKey;
+        public final PersistableCacheKey readerCacheKey;
         public final BytesReference value;
 
         Key(CacheEntity entity, IndexReader.CacheKey readerCacheKey, BytesReference value) {
             this.entity = entity;
-            this.readerCacheKey = Objects.requireNonNull(readerCacheKey);
+            this.readerCacheKey = new PersistableCacheKey(Objects.requireNonNull(readerCacheKey));
             this.value = value;
         }
 
@@ -328,7 +328,6 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
             if (Objects.equals(readerCacheKey, key.readerCacheKey) == false) return false;
             if (!entity.getCacheIdentity().equals(key.entity.getCacheIdentity())) return false;
             if (!value.equals(key.value)) return false;
-            if (value.hashCode() == key.value.hashCode())
             return true;
         }
 
@@ -420,7 +419,7 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
     }
 
     public static class TestEntity extends AbstractIndexShardCacheEntity implements Serializable {
-        private final AtomicBoolean standInForIndexShard;
+        public final AtomicBoolean standInForIndexShard;
         private final ShardRequestCache shardRequestCache;
 
         public TestEntity() {
@@ -434,7 +433,7 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
         }
 
         @Override
-        protected ShardRequestCache stats() {
+        public ShardRequestCache stats() {
             return shardRequestCache;
         }
 
@@ -452,5 +451,6 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
         public long ramBytesUsed() {
             return 42;
         }
+
     }
 }
