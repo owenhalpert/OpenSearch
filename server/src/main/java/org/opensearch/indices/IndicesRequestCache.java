@@ -46,6 +46,7 @@ import org.ehcache.config.builders.CacheManagerBuilder;
 import org.ehcache.config.builders.ExpiryPolicyBuilder;
 import org.ehcache.config.builders.ResourcePoolsBuilder;
 import org.ehcache.config.units.MemoryUnit;
+import org.ehcache.core.Ehcache;
 import org.ehcache.core.internal.statistics.DefaultStatisticsService;
 import org.ehcache.core.spi.service.StatisticsService;
 import org.ehcache.core.statistics.CacheStatistics;
@@ -80,6 +81,7 @@ import java.util.Collections;
 import java.util.Iterator;
 import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutionException;
@@ -117,9 +119,14 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
         Property.Dynamic,
         Property.IndexScope
     );
-    public static final Setting<ByteSizeValue> INDICES_CACHE_QUERY_SIZE = Setting.memorySizeSetting(
-        "indices.requests.cache.size",
+    public static final Setting<ByteSizeValue> INDICES_CACHE_QUERY_SIZE_HEAP = Setting.memorySizeSetting(
+        "indices.requests.cache.size.heap",
         "1%",
+        Property.NodeScope
+    );
+    public static final Setting<ByteSizeValue> INDICES_CACHE_QUERY_SIZE_DISK = Setting.memorySizeSetting(
+        "indices.requests.cache.size.disk",
+        "100mb",
         Property.NodeScope
     );
     public static final Setting<TimeValue> INDICES_CACHE_QUERY_EXPIRE = Setting.positiveTimeSetting(
@@ -127,32 +134,41 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
         new TimeValue(0),
         Property.NodeScope
     );
+    public static final Setting<String> INDICES_CACHE_DISK_PATH = Setting.simpleString(
+        "indices.requests.cache.disk.path",
+        ""
+    );
 
     private final ConcurrentMap<CleanupKey, Boolean> registeredClosedListeners = ConcurrentCollections.newConcurrentMap();
     private final Set<CleanupKey> keysToClean = ConcurrentCollections.newConcurrentSet();
-    private final ByteSizeValue size;
+    private final ByteSizeValue heapSize;
+    private final ByteSizeValue diskSize;
     private final TimeValue expire;
-    private final org.ehcache.Cache<Key, BytesReference> cache;
+    private final org.ehcache.Cache<Integer, BytesReference> cache;
     private final DefaultStatisticsService statisticsService;
+    public ConcurrentMap<Integer, Key> keyMap;
 
     IndicesRequestCache(Settings settings) {
-        this.size = INDICES_CACHE_QUERY_SIZE.get(settings);
+        this.heapSize = INDICES_CACHE_QUERY_SIZE_HEAP.get(settings);
+        this.diskSize = INDICES_CACHE_QUERY_SIZE_DISK.get(settings);
         this.expire = INDICES_CACHE_QUERY_EXPIRE.exists(settings) ? INDICES_CACHE_QUERY_EXPIRE.get(settings) : null;
-        long sizeInBytes = size.getBytes();
+        long heapSizeInBytes = heapSize.getBytes();
+        long diskSizeInBytes = diskSize.getBytes();
         this.statisticsService = new DefaultStatisticsService();
+        this.keyMap = ConcurrentCollections.newConcurrentMap();
         PersistentCacheManager cacheManager = CacheManagerBuilder.newCacheManagerBuilder()
-            .with(CacheManagerBuilder.persistence(new File("/Users/ohalpert/Desktop/Data", "myData")))
+            .with(CacheManagerBuilder.persistence(new File(String.valueOf(INDICES_CACHE_DISK_PATH), String.valueOf(UUID.randomUUID()))))
             .withCache("twoTieredCache",
-                CacheConfigurationBuilder.newCacheConfigurationBuilder(Key.class, BytesReference.class,
+                CacheConfigurationBuilder.newCacheConfigurationBuilder(Integer.class, BytesReference.class,
                     ResourcePoolsBuilder.newResourcePoolsBuilder()
-                        .heap(sizeInBytes, MemoryUnit.MB)
-                        .disk(sizeInBytes + 1, MemoryUnit.MB, true)
+                        .heap(heapSizeInBytes, MemoryUnit.MB)
+                        .disk(diskSizeInBytes, MemoryUnit.MB, true)
 //                ).withExpiry(ExpiryPolicyBuilder.timeToLiveExpiration(Duration.ofMillis(expire.millis()))) TODO: Add TTL only if expire != null
                 )
-            ).withSerializer(Key.class, KeySerializer.class)
+            ).withSerializer(Integer.class, KeySerializer.class)
             .using(statisticsService)
             .build(true);
-        cache = cacheManager.getCache("twoTieredCache", Key.class, BytesReference.class);
+        cache = cacheManager.getCache("twoTieredCache", Integer.class, BytesReference.class);
     }
 
     @Override
@@ -179,7 +195,8 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
         assert reader.getReaderCacheHelper() != null;
         final Key key = new Key(cacheEntity, reader.getReaderCacheHelper().getKey(), cacheKey);
         Loader cacheLoader = new Loader(cacheEntity, loader);
-        BytesReference value = cache.get(key);
+        int EhcacheKey = key.hashCode();
+        BytesReference value = cache.get(EhcacheKey);
         if (value == null) {
             key.entity.onMiss();
             // see if it's the first time we see this reader, and make sure to register a cleanup key
@@ -208,7 +225,8 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
         if (value == null) {
             NullPointerException npe = new NullPointerException("loader returned a null value");
             throw new ExecutionException(npe);
-        } cache.put(key, value);
+        } cache.put(key.hashCode(), value);
+        keyMap.put(key.hashCode(), key);
         return value;
     }
 
@@ -221,7 +239,7 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
      */
     void invalidate(CacheEntity cacheEntity, DirectoryReader reader, BytesReference cacheKey) {
         assert reader.getReaderCacheHelper() != null;
-        cache.remove(new Key(cacheEntity, reader.getReaderCacheHelper().getKey(), cacheKey));
+        cache.remove(new Key(cacheEntity, reader.getReaderCacheHelper().getKey(), cacheKey).hashCode());
     }
 
     /**
@@ -300,12 +318,12 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
         private static final long BASE_RAM_BYTES_USED = RamUsageEstimator.shallowSizeOfInstance(Key.class);
 
         public final CacheEntity entity; // use as identity equality
-        public final PersistableCacheKey readerCacheKey;
+        public final IndexReader.CacheKey readerCacheKey;
         public final BytesReference value;
 
         Key(CacheEntity entity, IndexReader.CacheKey readerCacheKey, BytesReference value) {
             this.entity = entity;
-            this.readerCacheKey = new PersistableCacheKey(Objects.requireNonNull(readerCacheKey));
+            this.readerCacheKey = Objects.requireNonNull(readerCacheKey);
             this.value = value;
         }
 
@@ -393,8 +411,9 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
             }
         }
         if (!currentKeysToClean.isEmpty() || !currentFullClean.isEmpty()) {
-            for (Iterator<Cache.Entry<Key, BytesReference>> iterator = cache.iterator(); iterator.hasNext(); ) { //changed to iterator over keys and values
-                Key key = iterator.next().getKey(); // changed to .getKey()
+            for (Iterator<Cache.Entry<Integer, BytesReference>> iterator = cache.iterator(); iterator.hasNext(); ) { //changed to iterator over keys and values
+                Integer ehcacheKey = iterator.next().getKey();// changed to .getKey()
+                Key key = getKey(ehcacheKey);
                 if (currentFullClean.contains(key.entity.getCacheIdentity())) {
                     iterator.remove(); //
                 } else {
@@ -406,12 +425,49 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
         }
     }
 
+    public Key getKey(Integer ehcacheKey) {
+        return keyMap.get(ehcacheKey);
+    }
+
     /**
-     * Returns the current size of the cache
+     * @return the current size of the cache, by number of entries
      */
     int count() {
         CacheStatistics CacheStat = this.statisticsService.getCacheStatistics("twoTieredCache");
-        return Math.toIntExact(CacheStat.getTierStatistics().get("Disk").getMappings()); //TODO: this method may be computationally expensive — unfortunately Ehcache doesn't dynamically update count like OS
+        return Math.toIntExact(CacheStat.getTierStatistics().get("Disk").getMappings());//TODO: this method may be computationally expensive — unfortunately Ehcache doesn't dynamically update count like OS
+    }
+
+    int heapCount() {
+        CacheStatistics CacheStat = this.statisticsService.getCacheStatistics("twoTieredCache");
+        return Math.toIntExact(CacheStat.getTierStatistics().get("OnHeap").getMappings());
+    }
+
+    /**
+     *
+     * @return the size of the cache, Disk tier and Heap tier, in bytes
+     */
+    int sizeInBytes() {
+        return onHeapBytes() + diskBytes();
+    }
+
+    /**
+     *
+     * @return the size of the Heap tier, in bytes
+     */
+    int onHeapBytes() {
+        CacheStatistics CacheStat = this.statisticsService.getCacheStatistics("twoTieredCache");
+        long memoryBytes = CacheStat.getTierStatistics().get("OnHeap").getOccupiedByteSize();
+        return Math.toIntExact(memoryBytes);
+    }
+
+    /**
+     *
+     * @return the size of the Disk tier, in bytes
+     */
+    int diskBytes() {
+        CacheStatistics CacheStat = this.statisticsService.getCacheStatistics("twoTieredCache");
+        long diskBytes = CacheStat.getTierStatistics().get("Disk").getOccupiedByteSize();
+        return Math.toIntExact(diskBytes);
     }
 
     int numRegisteredCloseListeners() { // for testing

@@ -8,53 +8,43 @@
 
 package org.opensearch.indices;
 
-import com.esotericsoftware.kryo.io.ByteBufferOutput;
 import com.esotericsoftware.kryo.io.Input;
 import com.esotericsoftware.kryo.io.Output;
-import com.esotericsoftware.kryo.serializers.JavaSerializer;
 import org.apache.lucene.index.IndexReader;
 import org.ehcache.spi.serialization.SerializerException;
 import com.esotericsoftware.kryo.*;
 import org.ehcache.spi.serialization.Serializer;
-import org.opensearch.common.bytes.BytesReference;
-import org.opensearch.common.metrics.CounterMetric;
 import org.opensearch.indices.IndicesRequestCache.Key;
 import org.opensearch.indices.IndicesRequestCache.TestEntity;
 import org.opensearch.common.bytes.BytesArray;
-import org.opensearch.index.cache.request.ShardRequestCache;
-import org.opensearch.indices.IndicesService;
+
 import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
 
-public class KeySerializer implements Serializer<Key> {
+public class KeySerializer implements Serializer<Integer> {
     private Kryo kryo;
     public KeySerializer(ClassLoader classLoader) {
         kryo = new Kryo();
-        kryo.setRegistrationRequired(false);
+        kryo.register(Integer.class);
     }
     @Override
-    public ByteBuffer serialize(IndicesRequestCache.Key key) throws SerializerException {
+    public ByteBuffer serialize(Integer ehcacheKey) throws SerializerException {
         Output output = new Output(new ByteArrayOutputStream());
-        kryo.writeObject(output, key.readerCacheKey);
-        kryo.writeObject(output, key.entity);
-        kryo.writeObject(output, key.value);
+        kryo.writeObject(output, ehcacheKey);
         output.close();
         return ByteBuffer.wrap(output.getBuffer());
     }
 
     @Override
-    public IndicesRequestCache.Key read(ByteBuffer binary) throws ClassNotFoundException, SerializerException {
+    public Integer read(ByteBuffer binary) throws ClassNotFoundException, SerializerException {
         Input input = new Input(binary.array());
-        IndexReader.CacheKey readerCacheKey = kryo.readObject(input, IndexReader.CacheKey.class);
-        TestEntity entity = kryo.readObject(input, TestEntity.class);
-        BytesArray value = kryo.readObject(input, BytesArray.class);
-        IndicesRequestCache.Key key = new Key(entity, readerCacheKey, value);
-        return key;
+        Integer ehcacheKey = kryo.readObject(input, Integer.class);
+        return ehcacheKey;
     }
 
     @Override
-    public boolean equals(IndicesRequestCache.Key object, ByteBuffer binary) throws ClassNotFoundException, SerializerException {
-        IndicesRequestCache.Key key = read(binary);
-        return object.equals(key);
+    public boolean equals(Integer object, ByteBuffer binary) throws ClassNotFoundException, SerializerException {
+        Integer ehcacheKey = read(binary);
+        return object.equals(ehcacheKey);
     }
 }
