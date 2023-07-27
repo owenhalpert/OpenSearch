@@ -242,11 +242,15 @@ public class IndicesRequestTieredCacheTests extends OpenSearchTestCase implement
             assertEquals("foo", value1.streamInput().readString());
             BytesReference value2 = cache.getOrCompute(secondEntity, secondLoader, secondReader, termBytes);
             assertEquals("bar", value2.streamInput().readString());
-            size = requestCacheStats.stats().getMemorySize();
+            value1 = cache.getOrCompute(entity, loader, reader, termBytes);
+            assertEquals("foo", value1.streamInput().readString());
+            value2 = cache.getOrCompute(secondEntity, secondLoader, secondReader, termBytes);
+            assertEquals("bar", value2.streamInput().readString());
+            size = new ByteSizeValue(cache.onHeapBytes());
             IOUtils.close(reader, secondReader, writer, dir, cache);
         }
         IndicesRequestCache cache = new IndicesRequestCache(
-            Settings.builder().put(IndicesRequestCache.INDICES_CACHE_QUERY_SIZE_HEAP.getKey(), size.getBytes() + 1 + "b").build()
+            Settings.builder().put(IndicesRequestCache.INDICES_CACHE_QUERY_SIZE_HEAP.getKey(), size.getBytes() - 591 + "b").build()
         );
         AtomicBoolean indexShard = new AtomicBoolean(true);
         ShardRequestCache requestCacheStats = new ShardRequestCache();

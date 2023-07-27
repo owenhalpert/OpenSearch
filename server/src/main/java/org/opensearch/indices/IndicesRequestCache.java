@@ -136,7 +136,8 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
     );
     public static final Setting<String> INDICES_CACHE_DISK_PATH = Setting.simpleString(
         "indices.requests.cache.disk.path",
-        ""
+        "/Users/ohalpert/Desktop/Data",
+        Property.NodeScope
     );
 
     private final ConcurrentMap<CleanupKey, Boolean> registeredClosedListeners = ConcurrentCollections.newConcurrentMap();
