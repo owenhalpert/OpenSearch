@@ -45,11 +45,13 @@ import org.ehcache.config.builders.CacheConfigurationBuilder;
 import org.ehcache.config.builders.CacheManagerBuilder;
 import org.ehcache.config.builders.ExpiryPolicyBuilder;
 import org.ehcache.config.builders.ResourcePoolsBuilder;
+import org.ehcache.config.units.EntryUnit;
 import org.ehcache.config.units.MemoryUnit;
 import org.ehcache.core.Ehcache;
 import org.ehcache.core.internal.statistics.DefaultStatisticsService;
 import org.ehcache.core.spi.service.StatisticsService;
 import org.ehcache.core.statistics.CacheStatistics;
+import org.ehcache.core.statistics.TierStatistics;
 import org.ehcache.expiry.Expirations;
 import org.ehcache.expiry.ExpiryPolicy;
 import org.opensearch.common.CheckedSupplier;
@@ -147,23 +149,25 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
     private final TimeValue expire;
     private final org.ehcache.Cache<Integer, BytesReference> cache;
     private final DefaultStatisticsService statisticsService;
+    private final String diskPath;
     public ConcurrentMap<Integer, Key> keyMap;
 
     IndicesRequestCache(Settings settings) {
         this.heapSize = INDICES_CACHE_QUERY_SIZE_HEAP.get(settings);
         this.diskSize = INDICES_CACHE_QUERY_SIZE_DISK.get(settings);
+        this.diskPath = INDICES_CACHE_DISK_PATH.get(settings);
         this.expire = INDICES_CACHE_QUERY_EXPIRE.exists(settings) ? INDICES_CACHE_QUERY_EXPIRE.get(settings) : null;
         long heapSizeInBytes = heapSize.getBytes();
         long diskSizeInBytes = diskSize.getBytes();
         this.statisticsService = new DefaultStatisticsService();
         this.keyMap = ConcurrentCollections.newConcurrentMap();
         PersistentCacheManager cacheManager = CacheManagerBuilder.newCacheManagerBuilder()
-            .with(CacheManagerBuilder.persistence(new File(String.valueOf(INDICES_CACHE_DISK_PATH), String.valueOf(UUID.randomUUID()))))
+            .with(CacheManagerBuilder.persistence(String.valueOf(new File(diskPath, String.valueOf(UUID.randomUUID())))))
             .withCache("twoTieredCache",
                 CacheConfigurationBuilder.newCacheConfigurationBuilder(Integer.class, BytesReference.class,
                     ResourcePoolsBuilder.newResourcePoolsBuilder()
-                        .heap(heapSizeInBytes, MemoryUnit.MB)
-                        .disk(diskSizeInBytes, MemoryUnit.MB, true)
+                        .heap(heapSizeInBytes, MemoryUnit.B)
+                        .disk(diskSizeInBytes, MemoryUnit.B, true)
 //                ).withExpiry(ExpiryPolicyBuilder.timeToLiveExpiration(Duration.ofMillis(expire.millis()))) TODO: Add TTL only if expire != null
                 )
             ).withSerializer(Integer.class, KeySerializer.class)
@@ -441,6 +445,11 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
     int heapCount() {
         CacheStatistics CacheStat = this.statisticsService.getCacheStatistics("twoTieredCache");
         return Math.toIntExact(CacheStat.getTierStatistics().get("OnHeap").getMappings());
+    }
+
+    int getHeapEvictions() {
+        CacheStatistics CacheStat = this.statisticsService.getCacheStatistics("twoTieredCache");
+        return Math.toIntExact(CacheStat.getTierStatistics().get("OnHeap").getEvictions());
     }
 
     /**

@@ -250,7 +250,7 @@ public class IndicesRequestTieredCacheTests extends OpenSearchTestCase implement
             IOUtils.close(reader, secondReader, writer, dir, cache);
         }
         IndicesRequestCache cache = new IndicesRequestCache(
-            Settings.builder().put(IndicesRequestCache.INDICES_CACHE_QUERY_SIZE_HEAP.getKey(), size.getBytes() - 591 + "b").build()
+            Settings.builder().put(IndicesRequestCache.INDICES_CACHE_QUERY_SIZE_HEAP.getKey(), 300 + "b").build()
         );
         AtomicBoolean indexShard = new AtomicBoolean(true);
         ShardRequestCache requestCacheStats = new ShardRequestCache();
@@ -278,7 +278,7 @@ public class IndicesRequestTieredCacheTests extends OpenSearchTestCase implement
         assertEquals("foo", value1.streamInput().readString());
         BytesReference value2 = cache.getOrCompute(secondEntity, secondLoader, secondReader, termBytes);
         assertEquals("bar", value2.streamInput().readString());
-        logger.info("Memory size: {}", cache.sizeInBytes());
+        logger.info("Total cache size: {}", cache.sizeInBytes());
         BytesReference value3 = cache.getOrCompute(thirddEntity, thirdLoader, thirdReader, termBytes);
         assertEquals("baz", value3.streamInput().readString());
         assertEquals(3, cache.count()); // disk cache has 3 entries, not pushed to heap yet
@@ -287,10 +287,10 @@ public class IndicesRequestTieredCacheTests extends OpenSearchTestCase implement
         assertEquals("foo", value1.streamInput().readString());
         value2 = cache.getOrCompute(secondEntity, secondLoader, secondReader, termBytes);
         assertEquals("bar", value2.streamInput().readString());
-        logger.info("Memory size: {}", cache.sizeInBytes());
+        logger.info("Total size: {}", cache.sizeInBytes());
         value3 = cache.getOrCompute(thirddEntity, thirdLoader, thirdReader, termBytes);
         assertEquals("baz", value3.streamInput().readString());
-        assertEquals(1, requestCacheStats.stats().getEvictions());
+        assertEquals(2, cache.getHeapEvictions());
         IOUtils.close(reader, secondReader, thirdReader, writer, dir, cache);
     }
 
