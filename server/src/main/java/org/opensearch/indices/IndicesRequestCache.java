@@ -34,6 +34,7 @@ package org.opensearch.indices;
 
 import com.carrotsearch.hppc.ObjectHashSet;
 import com.carrotsearch.hppc.ObjectSet;
+import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.lucene.index.DirectoryReader;
@@ -216,6 +217,12 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
         } else {
             key.entity.onHit();
         }
+        logger.log(Level.INFO, "***heap count: " + heapCount());
+        logger.log(Level.INFO, "***disk count: " + count());
+        logger.log(Level.INFO, "***heap bytes: " + onHeapBytes());
+        logger.log(Level.INFO, "***disk bytes: " + diskBytes());
+        logger.log(Level.INFO, "***heap evictions: " + getHeapEvictions());
+        logger.log(Level.INFO, "***disk evictions: " + getDiskEvictions());
         return value;
     }
 
@@ -450,6 +457,11 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
     int getHeapEvictions() {
         CacheStatistics CacheStat = this.statisticsService.getCacheStatistics("twoTieredCache");
         return Math.toIntExact(CacheStat.getTierStatistics().get("OnHeap").getEvictions());
+    }
+
+    int getDiskEvictions() {
+        CacheStatistics CacheStat = this.statisticsService.getCacheStatistics("twoTieredCache");
+        return Math.toIntExact(CacheStat.getTierStatistics().get("Disk").getEvictions());
     }
 
     /**
