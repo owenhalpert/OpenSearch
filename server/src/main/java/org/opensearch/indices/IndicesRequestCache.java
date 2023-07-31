@@ -217,12 +217,12 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
         } else {
             key.entity.onHit();
         }
-        logger.info("***heap count: " + heapCount());
-        logger.info("***disk count: " + count());
-        logger.info("***heap bytes: " + onHeapBytes());
-        logger.info("***disk bytes: " + diskBytes());
-        logger.info("***heap evictions: " + getHeapEvictions());
-        logger.info("***disk evictions: " + getDiskEvictions());
+        logger.log(Level.INFO, "***heap count: " + heapCount());
+        logger.log(Level.INFO, "***disk count: " + count());
+        logger.log(Level.INFO, "***heap bytes: " + onHeapBytes());
+        logger.log(Level.INFO, "***disk bytes: " + diskBytes());
+        logger.log(Level.INFO, "***heap evictions: " + getHeapEvictions());
+        logger.log(Level.INFO, "***disk evictions: " + getDiskEvictions());
         return value;
     }
 

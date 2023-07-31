@@ -31,9 +31,6 @@ nbactions.xml
 .gradle/
 build/
 
-#disk writes
-{?  "key" / "indices.requests.cache.disk.path",?  "properties" / [?    "NodeScope"?  ],?  "is_group_setting" / false,?  "default" / "/
-
 # vscode stuff
 .vscode/
 
@@ -64,12 +61,3 @@ testfixtures_shared/
 
 # build files generated
 doc-tools/missing-doclet/bin/
-
-server/{
-  "key" : "indices.requests.cache.disk.path",
-  "properties" : \[
-    "NodeScope"
-  \],
-  "is_group_setting" : false,
-  "default" : "/Users/ohalpert/Desktop/Data"
-}/
