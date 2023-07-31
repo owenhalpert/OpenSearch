@@ -10,9 +10,12 @@ out/
 # include shared intellij config
 !.idea/inspectionProfiles/Project_Default.xml
 !.idea/runConfigurations/Debug_OpenSearch.xml
+!.idea/vcs.xml
 
-# These files are generated in the main tree by IntelliJ
+# These files are generated in the main tree by annotation processors
 benchmarks/src/main/generated/*
+benchmarks/bin/*
+benchmarks/build-eclipse-default/*
 
 # eclipse files
 .project
@@ -27,6 +30,9 @@ nbactions.xml
 # gradle stuff
 .gradle/
 build/
+
+#disk writes
+{?  "key" / "indices.requests.cache.disk.path",?  "properties" / [?    "NodeScope"?  ],?  "is_group_setting" / false,?  "default" / "/
 
 # vscode stuff
 .vscode/
@@ -55,3 +61,15 @@ testfixtures_shared/
 
 # These are generated from .ci/jobs.t
 .ci/jobs/
+
+# build files generated
+doc-tools/missing-doclet/bin/
+
+server/{
+  "key" : "indices.requests.cache.disk.path",
+  "properties" : \[
+    "NodeScope"
+  \],
+  "is_group_setting" : false,
+  "default" : "/Users/ohalpert/Desktop/Data"
+}/
