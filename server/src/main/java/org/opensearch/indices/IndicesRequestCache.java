@@ -313,17 +313,12 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
          */
         void onRemoval(RemovalNotification<Key, BytesReference> notification);
     }
-
-<<<<<<< HEAD
-    static class Key implements Accountable {
-=======
     /**
      * Unique key for the cache
      *
      * @opensearch.internal
      */
-    static class Key implements Accountable, Serializable {
->>>>>>> 9872b7c0e0a (Squashing 25 commits to cherry pick from 2.8 to 1.3)
+    public static class Key implements Accountable, Serializable {
         private static final long BASE_RAM_BYTES_USED = RamUsageEstimator.shallowSizeOfInstance(Key.class);
 
         public final CacheEntity entity; // use as identity equality
