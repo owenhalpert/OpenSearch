@@ -115,18 +115,18 @@ dependencies {
   api project(":libs:opensearch-cli")
   api 'com.carrotsearch:hppc:0.8.1'
   api 'org.ehcache:ehcache:3.10.8'
-
-  // https://mvnrepository.com/artifact/com.esotericsoftware/kryo
-  implementation group: 'com.esotericsoftware', name: 'kryo', version: '5.5.0'
-
-  // https://mvnrepository.com/artifact/com.esotericsoftware.minlog/minlog
-  implementation group: 'com.esotericsoftware.minlog', name: 'minlog', version: '1.2'
-
-  // https://mvnrepository.com/artifact/com.esotericsoftware/reflectasm
-  implementation group: 'com.esotericsoftware', name: 'reflectasm', version: '1.11.9'
-
-  // https://mvnrepository.com/artifact/org.objenesis/objenesis
-  testImplementation group: 'org.objenesis', name: 'objenesis', version: '3.2'
+//
+//  // https://mvnrepository.com/artifact/com.esotericsoftware/kryo
+//  implementation group: 'com.esotericsoftware', name: 'kryo', version: '5.5.0'
+//
+//  // https://mvnrepository.com/artifact/com.esotericsoftware.minlog/minlog
+//  implementation group: 'com.esotericsoftware.minlog', name: 'minlog', version: '1.2'
+//
+//  // https://mvnrepository.com/artifact/com.esotericsoftware/reflectasm
+//  implementation group: 'com.esotericsoftware', name: 'reflectasm', version: '1.11.9'
+//
+//  // https://mvnrepository.com/artifact/org.objenesis/objenesis
+//  testImplementation group: 'org.objenesis', name: 'objenesis', version: '3.2'
 
   // https://mvnrepository.com/artifact/org.slf4j/slf4j-api
   implementation group: 'org.slf4j', name: 'slf4j-api', version: '1.6.2'

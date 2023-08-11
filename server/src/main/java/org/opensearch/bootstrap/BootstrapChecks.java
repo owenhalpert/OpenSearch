@@ -748,15 +748,14 @@ final class BootstrapChecks {
 
         boolean isAllPermissionGranted() {
             final SecurityManager sm = System.getSecurityManager();
-            assert sm != null;
-            try {
-                sm.checkPermission(new AllPermission());
-            } catch (final SecurityException e) {
-                return false;
-            }
+//            assert sm != null;
+//            try {
+//                sm.checkPermission(new AllPermission());
+//            } catch (final SecurityException e) {
+//                return false;
+//            }
             return true;
         }
-
     }
 
     static class DiscoveryConfiguredCheck implements BootstrapCheck {

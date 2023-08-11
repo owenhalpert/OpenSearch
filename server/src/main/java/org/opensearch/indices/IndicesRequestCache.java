@@ -169,7 +169,7 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
                         .disk(diskSizeInBytes, MemoryUnit.B, true)
 //                ).withExpiry(ExpiryPolicyBuilder.timeToLiveExpiration(Duration.ofMillis(expire.millis()))) TODO: Add TTL only if expire != null
                 )
-            ).withSerializer(Integer.class, KeySerializer.class)
+            )
             .using(statisticsService)
             .build(true);
         cache = cacheManager.getCache("twoTieredCache", Integer.class, BytesReference.class);
@@ -250,6 +250,7 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
     void invalidate(CacheEntity cacheEntity, DirectoryReader reader, BytesReference cacheKey) {
         assert reader.getReaderCacheHelper() != null;
         cache.remove(new Key(cacheEntity, reader.getReaderCacheHelper().getKey(), cacheKey).hashCode());
+        keyMap.remove(new Key(cacheEntity, reader.getReaderCacheHelper().getKey(), cacheKey).hashCode());
     }
 
     private static class Loader implements CacheLoader<Key, BytesReference> {

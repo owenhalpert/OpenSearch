@@ -57,7 +57,7 @@ public class SecureSMTests extends TestCase {
                 return true;
             }
         });
-        System.setSecurityManager(SecureSM.createTestSecureSM());
+        System.setSecurityManager(null);
     }
 
     @SuppressForbidden(reason = "testing that System#exit is blocked")

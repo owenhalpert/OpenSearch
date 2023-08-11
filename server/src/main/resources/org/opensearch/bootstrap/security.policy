@@ -67,6 +67,12 @@ grant codeBase "${codebase.lucene-misc}" {
   permission java.nio.file.LinkPermission "hard";
 };
 
+grant codeBase "${codebase.ehcache}" {
+  // needed to allow ehcache to create the classloader
+  permission java.security.AllPermission;
+  permission java.lang.RuntimePermission "accessDeclaredMembers";
+};
+
 grant codeBase "${codebase.opensearch-plugin-classloader}" {
   // needed to create the classloader which allows plugins to extend other plugins
   permission java.lang.RuntimePermission "createClassLoader";
