@@ -137,7 +137,7 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
     );
     public static final Setting<String> INDICES_CACHE_DISK_PATH = Setting.simpleString(
         "indices.requests.cache.disk.path",
-        "/Users/ohalpert/Desktop/Data",
+        "/Users/ohalpert/Documents/PoC/Ehcache Disk Tier",
         Property.NodeScope
     );
 
@@ -167,7 +167,6 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
                     ResourcePoolsBuilder.newResourcePoolsBuilder()
                         .heap(heapSizeInBytes, MemoryUnit.B)
                         .disk(diskSizeInBytes, MemoryUnit.B, true)
-//                ).withExpiry(ExpiryPolicyBuilder.timeToLiveExpiration(Duration.ofMillis(expire.millis()))) TODO: Add TTL only if expire != null
                 )
             )
             .using(statisticsService)
@@ -183,6 +182,7 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
     void clear(CacheEntity entity) {
         keysToClean.add(new CleanupKey(entity, null));
         cleanCache();
+        keyMap.clear();
     }
 
     @Override
