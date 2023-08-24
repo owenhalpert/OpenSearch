@@ -120,9 +120,20 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
         Property.Dynamic,
         Property.IndexScope
     );
+    public static final Setting<Boolean> INDEX_CACHE_REQUEST_EHCACHE = Setting.boolSetting(
+        "index.requests.cache.ehcache",
+        true,
+        Property.Dynamic,
+        Property.IndexScope
+    );
     public static final Setting<ByteSizeValue> INDICES_CACHE_QUERY_SIZE_HEAP = Setting.memorySizeSetting(
         "indices.requests.cache.size.heap",
         "1%",
+        Property.NodeScope
+    );
+    public static final Setting<String> INDICES_CACHE_TYPE = Setting.simpleString(
+        "indices.requests.cache.type",
+        "diskAndHeap",
         Property.NodeScope
     );
     public static final Setting<ByteSizeValue> INDICES_CACHE_QUERY_SIZE_DISK = Setting.memorySizeSetting(
@@ -146,23 +157,61 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
     private final ByteSizeValue heapSize;
     private final ByteSizeValue diskSize;
     private final TimeValue expire;
-    private final org.ehcache.Cache<Integer, BytesReference> cache;
     private final DefaultStatisticsService statisticsService;
     private final String diskPath;
+    private final String cacheSetting;
+    private final Cache<Integer, BytesReference> cache;
     public ConcurrentMap<Integer, Key> keyMap;
+    private final Boolean ehcache;
 
     IndicesRequestCache(Settings settings) {
         this.heapSize = INDICES_CACHE_QUERY_SIZE_HEAP.get(settings);
         this.diskSize = INDICES_CACHE_QUERY_SIZE_DISK.get(settings);
         this.diskPath = INDICES_CACHE_DISK_PATH.get(settings);
+        this.ehcache = INDEX_CACHE_REQUEST_EHCACHE.get(settings);
         this.expire = INDICES_CACHE_QUERY_EXPIRE.exists(settings) ? INDICES_CACHE_QUERY_EXPIRE.get(settings) : null;
         long heapSizeInBytes = heapSize.getBytes();
         long diskSizeInBytes = diskSize.getBytes();
         this.statisticsService = new DefaultStatisticsService();
         this.keyMap = ConcurrentCollections.newConcurrentMap();
-        PersistentCacheManager cacheManager = CacheManagerBuilder.newCacheManagerBuilder()
+        this.cacheSetting = INDICES_CACHE_TYPE.get(settings);
+//        if (ehcache.equals(Boolean.FALSE)) {
+//            cache = new OSIndicesRequestCache(settings);
+//            return;
+//        }
+        switch (this.cacheSetting) {
+            case "diskOnly":
+                cache = createDiskCache(diskPath, diskSizeInBytes);
+                break;
+            case "diskAndHeap":
+                cache = createDiskAndHeapCache(diskPath, diskSizeInBytes, heapSizeInBytes);
+                break;
+            case "heapOnly":
+                cache = createHeapOnlyCache(heapSizeInBytes);
+                break;
+            default:
+                throw new IllegalArgumentException("Invalid cache type: " + cacheSetting);
+        }
+    }
+
+    private Cache<Integer, BytesReference> createDiskCache(String diskPath, long diskSizeInBytes) {
+        PersistentCacheManager diskOnlyCacheManager = CacheManagerBuilder.newCacheManagerBuilder()
             .with(CacheManagerBuilder.persistence(String.valueOf(new File(diskPath, String.valueOf(UUID.randomUUID())))))
-            .withCache("twoTieredCache",
+            .withCache("diskOnly",
+                CacheConfigurationBuilder.newCacheConfigurationBuilder(Integer.class, BytesReference.class,
+                    ResourcePoolsBuilder.newResourcePoolsBuilder()
+                        .disk(diskSizeInBytes, MemoryUnit.B, true)
+                )
+            )
+            .using(statisticsService)
+            .build(true);
+        return diskOnlyCacheManager.getCache("diskOnly", Integer.class, BytesReference.class);
+    }
+
+    private Cache<Integer, BytesReference> createDiskAndHeapCache(String diskPath, long diskSizeInBytes, long heapSizeInBytes) {
+        PersistentCacheManager diskAndHeapCacheManager = CacheManagerBuilder.newCacheManagerBuilder()
+            .with(CacheManagerBuilder.persistence(String.valueOf(new File(diskPath, String.valueOf(UUID.randomUUID())))))
+            .withCache("diskAndHeap",
                 CacheConfigurationBuilder.newCacheConfigurationBuilder(Integer.class, BytesReference.class,
                     ResourcePoolsBuilder.newResourcePoolsBuilder()
                         .heap(heapSizeInBytes, MemoryUnit.B)
@@ -171,7 +220,20 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
             )
             .using(statisticsService)
             .build(true);
-        cache = cacheManager.getCache("twoTieredCache", Integer.class, BytesReference.class);
+        return diskAndHeapCacheManager.getCache("diskAndHeap", Integer.class, BytesReference.class);
+    }
+
+    private Cache<Integer, BytesReference> createHeapOnlyCache(long heapSizeInBytes) {
+        CacheManager heapOnlyCacheManager = CacheManagerBuilder.newCacheManagerBuilder()
+            .withCache("heapOnly",
+                CacheConfigurationBuilder.newCacheConfigurationBuilder(Integer.class, BytesReference.class,
+                    ResourcePoolsBuilder.newResourcePoolsBuilder()
+                        .heap(heapSizeInBytes, MemoryUnit.B)
+                )
+            )
+            .using(statisticsService)
+            .build(true);
+        return heapOnlyCacheManager.getCache("heapOnly", Integer.class, BytesReference.class);
     }
 
     @Override
@@ -438,23 +500,43 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
      * @return the current size of the cache, by number of entries
      */
     int count() {
-        CacheStatistics CacheStat = this.statisticsService.getCacheStatistics("twoTieredCache");
-        return Math.toIntExact(CacheStat.getTierStatistics().get("Disk").getMappings());//TODO: this method may be computationally expensive — unfortunately Ehcache doesn't dynamically update count like OS
+        if (this.cacheSetting == "heapOnly") {
+            return heapCount();
+        }
+        else {
+            CacheStatistics CacheStat = this.statisticsService.getCacheStatistics(this.cacheSetting);
+            return Math.toIntExact(CacheStat.getTierStatistics().get("Disk").getMappings());
+        }
     }
 
     int heapCount() {
-        CacheStatistics CacheStat = this.statisticsService.getCacheStatistics("twoTieredCache");
-        return Math.toIntExact(CacheStat.getTierStatistics().get("OnHeap").getMappings());
+        if (this.cacheSetting == "diskOnly") {
+            return 0;
+        }
+        else {
+            CacheStatistics CacheStat = this.statisticsService.getCacheStatistics(this.cacheSetting);
+            return Math.toIntExact(CacheStat.getTierStatistics().get("OnHeap").getMappings());
+        }
     }
 
     int getHeapEvictions() {
-        CacheStatistics CacheStat = this.statisticsService.getCacheStatistics("twoTieredCache");
-        return Math.toIntExact(CacheStat.getTierStatistics().get("OnHeap").getEvictions());
+        if (this.cacheSetting == "diskOnly") {
+            return 0;
+        }
+        else {
+            CacheStatistics CacheStat = this.statisticsService.getCacheStatistics(this.cacheSetting);
+            return Math.toIntExact(CacheStat.getTierStatistics().get("OnHeap").getEvictions());
+        }
     }
 
     int getDiskEvictions() {
-        CacheStatistics CacheStat = this.statisticsService.getCacheStatistics("twoTieredCache");
-        return Math.toIntExact(CacheStat.getTierStatistics().get("Disk").getEvictions());
+        if (this.cacheSetting == "heapOnly") {
+            return 0;
+        }
+        else {
+            CacheStatistics CacheStat = this.statisticsService.getCacheStatistics(this.cacheSetting);
+            return Math.toIntExact(CacheStat.getTierStatistics().get("Disk").getEvictions());
+        }
     }
 
     /**
@@ -470,9 +552,14 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
      * @return the size of the Heap tier, in bytes
      */
     int onHeapBytes() {
-        CacheStatistics CacheStat = this.statisticsService.getCacheStatistics("twoTieredCache");
-        long memoryBytes = CacheStat.getTierStatistics().get("OnHeap").getOccupiedByteSize();
-        return Math.toIntExact(memoryBytes);
+        if (this.cacheSetting == "diskOnly") {
+            return 0;
+        }
+        else {
+            CacheStatistics CacheStat = this.statisticsService.getCacheStatistics(this.cacheSetting);
+            long memoryBytes = CacheStat.getTierStatistics().get("OnHeap").getOccupiedByteSize();
+            return Math.toIntExact(memoryBytes);
+        }
     }
 
     /**
@@ -480,9 +567,14 @@ public final class IndicesRequestCache implements RemovalListener<IndicesRequest
      * @return the size of the Disk tier, in bytes
      */
     int diskBytes() {
-        CacheStatistics CacheStat = this.statisticsService.getCacheStatistics("twoTieredCache");
-        long diskBytes = CacheStat.getTierStatistics().get("Disk").getOccupiedByteSize();
-        return Math.toIntExact(diskBytes);
+        if (cacheSetting == "heapOnly") {
+            return 0;
+        }
+        else {
+            CacheStatistics CacheStat = this.statisticsService.getCacheStatistics(this.cacheSetting);
+            long diskBytes = CacheStat.getTierStatistics().get("Disk").getOccupiedByteSize();
+            return Math.toIntExact(diskBytes);
+        }
     }
 
     int numRegisteredCloseListeners() { // for testing
